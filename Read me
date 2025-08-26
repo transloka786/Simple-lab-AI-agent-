@@ -1,0 +1,16 @@
+# ---------------------------
+# README.md
+# ---------------------------
+readme = f"""# Lab Experiment Planner — Streamlit
+
+A lightweight 9–5 lab planner that:
+- Parses **template** or **free-text** experiment descriptions
+- Builds **weekly or monthly schedules** within business hours
+- Inserts **reagent calculator** (C1V1 = C2V2) steps before treatments
+- Fetches protocol **snippets from a local JSON library**
+- Exports **CSV**, **.ICS reminders**, and a **notebook summary** text
+
+## Run locally
+```bash
+pip install -r requirements.txt
+streamlit run app.py
