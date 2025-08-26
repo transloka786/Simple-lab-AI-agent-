@@ -1,0 +1,48 @@
+{
+  "cell_timecourse": {
+    "title": "Cell Treatment Timecourse (Generic)",
+    "steps": [
+      "Warm media and reagents to 37°C.",
+      "Thaw cells if needed and check viability.",
+      "Seed cells at desired density; allow to settle.",
+      "Prepare drug dilutions from stock using sterile technique.",
+      "Treat cells at T0; record exact time.",
+      "At each timepoint: wash, lyse, and collect samples on ice.",
+      "Store lysates at -20°C/-80°C or proceed to downstream assay."
+    ]
+  },
+  "western_blot": {
+    "title": "Western Blot – Rapid Check",
+    "steps": [
+      "Prepare lysates; quantify protein concentration.",
+      "Cast/assemble gel; pre-run if required.",
+      "Load samples with loading dye; run until proper separation.",
+      "Transfer to membrane; confirm transfer (Ponceau).",
+      "Block membrane; incubate in primary antibody.",
+      "Wash, incubate in secondary antibody; wash again.",
+      "Develop and document images; export to ELN."
+    ]
+  },
+  "qpcr": {
+    "title": "qPCR Workflow",
+    "steps": [
+      "Extract total RNA; assess purity (A260/A280).",
+      "DNase treat and cleanup.",
+      "Reverse transcribe to cDNA.",
+      "Prepare qPCR master mix and plate layout.",
+      "Run qPCR and collect amplification data.",
+      "Perform ΔΔCt analysis; visualize results."
+    ]
+  },
+  "elisa": {
+    "title": "ELISA – Sandwich Format",
+    "steps": [
+      "Coat capture antibody; incubate.",
+      "Block plate; wash.",
+      "Add samples and standards; incubate.",
+      "Wash; add detection antibody; incubate.",
+      "Add substrate; stop reaction; read absorbance.",
+      "Export data; calculate concentrations from standard curve."
+    ]
+  }
+}
