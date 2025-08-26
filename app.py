@@ -1,12 +1,13 @@
-# ---------------------------
-# app.py (Streamlit)
-# ---------------------------
-app_py = r'''
 import streamlit as st
 import json, datetime as dt, pandas as pd, re
 from io import StringIO
 from dataclasses import dataclass
 from typing import List, Optional
+import os
+from openai import OpenAI
+client = None
+if os.getenv("OPENAI_API_KEY"):
+    client = OpenAI()
 
 st.set_page_config(page_title="Lab Experiment Planner", page_icon="🧪", layout="wide")
 st.title("🧪 Lab Experiment Planner — 9–5 Smart Scheduler")
