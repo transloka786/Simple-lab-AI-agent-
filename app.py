@@ -26,11 +26,13 @@ except Exception:
     OpenAI = None
 
 client = None
-if OpenAI and os.getenv("OPENAI_API_KEY"):
-    try:
-        client = OpenAI()
-    except Exception:
-        client = None
+if OpenAI:
+    API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+    if API_KEY:
+        try:
+            client = OpenAI(api_key=API_KEY)   # pass key directly (works locally & on Streamlit Cloud)
+        except Exception:
+            client = None
 
 # -----------------------------
 # Streamlit page config
