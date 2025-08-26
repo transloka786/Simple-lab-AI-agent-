@@ -87,6 +87,39 @@ def make_template(exptype: str) -> List[Task]:
             Task("Export & quick analysis", 30, dt.time(14,0), dt.time(17,0), ["Substrate & read"]),
         ]
     return make_template("cell_timecourse")
+    
+    def tasks_from_llm_spec(spec: dict) -> List[Task]:
+    assay = (spec.get("assay") or "cell_timecourse").lower()
+    if assay in ("cell_timecourse","timecourse"):
+        tasks = make_template("cell_timecourse")
+        tps = spec.get("timepoints_hours") or []
+        wanted = sorted(set(int(x) for x in tps if isinstance(x,(int,float))))
+        tasks = [t for t in tasks if "TP:" not in t.name]
+        after = "Treat cells (T0)"
+        for h in wanted:
+            tasks.append(Task(f"{h}-hour TP: wash/lyse", 30, dt.time(9,0), dt.time(17,0), [after]))
+        if not spec.get("include_gel_check", True):
+            tasks = [t for t in tasks if "gel" not in t.name.lower()]
+    elif assay == "western_blot":
+        tasks = make_template("western_blot")
+    elif assay == "qpcr":
+        tasks = make_template("qpcr")
+    elif assay == "elisa":
+        tasks = make_template("elisa")
+    else:
+    paragraph = st.text_area("Describe your experiment", height=120, value="3 doses cisplatin; 1h & 4h; quick mini-gel; seed cells.")
+    spec = llm_parse_paragraph_to_spec(paragraph)
+    if spec:
+        tasks = tasks_from_llm_spec(spec)
+        proto_key = (spec.get("assay") or "cell_timecourse").lower()
+        st.caption("🧠 Parsed with OpenAI (structured).")
+    else:
+        tasks = parse_paragraph_to_template(paragraph)
+        proto_key = "cell_timecourse"
+        st.caption("ℹ️ Using fallback regex parser.")
+
+    return tasks
+
 
 def parse_paragraph_to_template(text: str) -> List[Task]:
     t = text.lower()
@@ -125,6 +158,23 @@ def parse_paragraph_to_template(text: str) -> List[Task]:
             break
     tasks.append(Task("Cleanup & notebook summary", 20, dt.time(16,0), dt.time(17,0), deps_cleanup))
     return tasks if tasks else make_template("cell_timecourse")
+def llm_parse_paragraph_to_spec(text: str) -> dict:
+    if client is None:
+        return None
+    prompt = f"""
+    You are a lab planner. Parse the following paragraph and return ONLY structured fields via the provided tool.
+    Paragraph: ```{text}```
+    """
+    resp = client.responses.create(
+        model="gpt-o3-mini",  # or o3-mini for cheaper parsing
+        input=[{"role":"user","content":prompt}],
+        tools=[{"type":"function","function": EXPERIMENT_SCHEMA}],
+        tool_choice={"type":"function","function":{"name":"extract_experiment"}}
+    )
+    for out in resp.output:
+        if out.type == "tool_call" and out.tool_name == "extract_experiment":
+            return out.arguments
+    return None
 
 def schedule_multiday(tasks: List[Task], start_date: dt.date, num_days: int, work_start=dt.time(9,0), work_end=dt.time(17,0)):
     from collections import defaultdict, deque
@@ -218,6 +268,23 @@ def build_ics(df: pd.DataFrame) -> str:
         lines += ["BEGIN:VEVENT", f"DTSTART:{dtstamp(r['Start'])}", f"DTEND:{dtstamp(r['End'])}", f"SUMMARY:{r['Task']}", "END:VEVENT"]
     lines.append("END:VCALENDAR")
     return "\n".join(lines)
+with st.expander("🧠 Optimization suggestions", expanded=False):
+    if client:
+        def llm_optimize_schedule(df, protocol_key):
+            plan_txt = "\n".join(
+                f"{r.Start.strftime('%H:%M')}–{r.End.strftime('%H:%M')}: {r.Task} ({r.Day})"
+                for _, r in df.iterrows()
+            )
+            proto = PROTOCOLS.get(protocol_key, {}).get("steps", [])
+            prompt = f"""
+            You are a senior lab manager. Suggest improvements:
+            - Parallelize safely
+            - Reorder around fixed points
+            - Use idle time better
+            Schedule:
+            {plan_txt}
+
+            P
 
 def reagent_calculator(components):
     def to_M(val, unit):
