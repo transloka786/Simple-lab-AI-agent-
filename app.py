@@ -11,6 +11,24 @@ if os.getenv("OPENAI_API_KEY"):
 
 st.set_page_config(page_title="Lab Experiment Planner", page_icon="🧪", layout="wide")
 st.title("🧪 Lab Experiment Planner — 9–5 Smart Scheduler")
+EXPERIMENT_SCHEMA = {
+    "name": "extract_experiment",
+    "description": "Extract experiment entities from a paragraph for lab planning.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "assay": {"type":"string", "description":"cell_timecourse, western_blot, qpcr, or elisa"},
+            "cell_line": {"type":"string"},
+            "doses": {"type":"array","items":{"type":"string"}},
+            "replicates":{"type":"integer"},
+            "timepoints_hours":{"type":"array","items":{"type":"number"}},
+            "needs_seeding":{"type":"boolean"},
+            "include_gel_check":{"type":"boolean"},
+            "other_notes":{"type":"string"}
+        },
+        "required": ["assay"]
+    }
+}
 
 # Load local protocols
 with open("protocols.json","r") as f:
