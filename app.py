@@ -27,7 +27,7 @@ except Exception:
 
 client = None
 if OpenAI:
-    API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY")
+    API_KEY = "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"
     if API_KEY:
         try:
             client = OpenAI(api_key=API_KEY)   # pass key directly (works locally & on Streamlit Cloud)
