@@ -88,12 +88,13 @@ def make_template(exptype: str) -> List[Task]:
         ]
     return make_template("cell_timecourse")
     
-    def tasks_from_llm_spec(spec: dict) -> List[Task]:
+def tasks_from_llm_spec(spec: dict) -> List[Task]:
     assay = (spec.get("assay") or "cell_timecourse").lower()
     if assay in ("cell_timecourse","timecourse"):
         tasks = make_template("cell_timecourse")
         tps = spec.get("timepoints_hours") or []
         wanted = sorted(set(int(x) for x in tps if isinstance(x,(int,float))))
+        # remove existing TP tasks
         tasks = [t for t in tasks if "TP:" not in t.name]
         after = "Treat cells (T0)"
         for h in wanted:
@@ -107,18 +108,9 @@ def make_template(exptype: str) -> List[Task]:
     elif assay == "elisa":
         tasks = make_template("elisa")
     else:
-    paragraph = st.text_area("Describe your experiment", height=120, value="3 doses cisplatin; 1h & 4h; quick mini-gel; seed cells.")
-    spec = llm_parse_paragraph_to_spec(paragraph)
-    if spec:
-        tasks = tasks_from_llm_spec(spec)
-        proto_key = (spec.get("assay") or "cell_timecourse").lower()
-        st.caption("🧠 Parsed with OpenAI (structured).")
-    else:
-        tasks = parse_paragraph_to_template(paragraph)
-        proto_key = "cell_timecourse"
-        st.caption("ℹ️ Using fallback regex parser.")
-
+        tasks = make_template("cell_timecourse")
     return tasks
+
 
 
 def parse_paragraph_to_template(text: str) -> List[Task]:
