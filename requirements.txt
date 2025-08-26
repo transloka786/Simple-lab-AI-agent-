@@ -1,8 +1,2 @@
-# ---------------------------
-# requirements.txt
-# ---------------------------
-req = """streamlit==1.36.0
-pandas==2.2.2
-"""
-with open(os.path.join(base_dir, "requirements.txt"), "w") as f:
-    f.write(req)
+streamlit>=1.33,<1.38
+pandas>=2.1,<2.3
