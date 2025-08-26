@@ -1,7 +1,8 @@
 # app.py — Lab Experiment Planner (Streamlit)
 # Features:
-# - Weekly/Monthly 9–5 scheduler with dependency handling
-# - Template or free-text (LLM) parsing
+# - Weekly/Monthly 9–5 scheduler with dependency handling (for general templates)
+# - Special template: OAW42 Mon treat / Fri measure ×4 weeks (direct plan)
+# - Template or free-text (LLM) parsing with robust fallbacks
 # - Reagent calculator (C1V1=C2V2)
 # - Protocol fetcher from local JSON
 # - Notebook summary export
@@ -10,6 +11,8 @@
 import os
 import json
 import re
+import time
+import random
 import datetime as dt
 from dataclasses import dataclass
 from typing import List, Optional
@@ -17,32 +20,31 @@ from typing import List, Optional
 import pandas as pd
 import streamlit as st
 
-# -----------------------------
-# OpenAI client (optional)
-# -----------------------------
+# -----------------------------------
+# OpenAI client (supports Streamlit Secrets & local env)
+# -----------------------------------
 try:
     from openai import OpenAI
 except Exception:
     OpenAI = None
 
 client = None
-if OpenAI:
-    API_KEY = "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"
-    if API_KEY:
-        try:
-            client = OpenAI(api_key=API_KEY)   # pass key directly (works locally & on Streamlit Cloud)
-        except Exception:
-            client = None
+API_KEY = os.getenv("OPENAI_API_KEY") or st.secrets.get("OPENAI_API_KEY", None)
+if OpenAI and API_KEY:
+    try:
+        client = OpenAI(api_key=API_KEY)
+    except Exception:
+        client = None
 
-# -----------------------------
+# -----------------------------------
 # Streamlit page config
-# -----------------------------
+# -----------------------------------
 st.set_page_config(page_title="Lab Experiment Planner", page_icon="🧪", layout="wide")
 st.title("🧪 Lab Experiment Planner — 9–5 Smart Scheduler")
 
-# -----------------------------
-# Load protocols.json (with safe fallback)
-# -----------------------------
+# -----------------------------------
+# Load protocols.json (safe fallback)
+# -----------------------------------
 DEFAULT_PROTOCOLS = {
     "cell_timecourse": {
         "title": "Cell Treatment Timecourse (Generic)",
@@ -79,41 +81,7 @@ DEFAULT_PROTOCOLS = {
             "Perform ΔΔCt analysis; visualize results."
         ]
     },
-    "oaw42_cisplatin_weekly": {
-        "title": "OAW42 — Weekly Cisplatin Treatment (Mon) with Friday Measurement on Same Plate (×4 weeks)",
-        "steps": [
-    "Safety: Handle cisplatin with appropriate PPE and waste disposal; use certified chemotherapy hood where available.",
-    "Plate setup (Week 0, Fri or Mon AM before first dose): Seed OAW42 cells into a 96-well plate at a density that remains sub-confluent for ≥4 weeks with weekly treatments (e.g., 3–6k cells/well; optimize locally). Include control wells.",
-    "Media: Use complete growth medium; warm to 37 °C before use.",
-    "Drug stock: Prepare cisplatin stock per MSDS/SOP. Prepare working dilutions fresh on dosing days; protect from light as applicable.",
-    "Weekly cycle overview: Treat every Monday; measure every Friday on the same plate; maintain cells Tue–Thu with no measurement manipulation.",
-    "MONDAY (each week) — Dosing:",
-    "1) Pre-dose: Aspirate ~50% of medium if needed to maintain volume after adding drug; avoid exposing cells to air.",
-    "2) Prepare fresh cisplatin working solutions to desired final concentrations (e.g., 0.1–10 µM). Use sterile technique.",
-    "3) Dose: Add drug to achieve final concentration; gently tap/rock plate for even distribution. Mark plate and record exact T0.",
-    "4) Return plate to incubator (37 °C, 5% CO₂).",
-    "TUE–THU — Maintenance:",
-    "5) Visual check daily for morphology and confluence; document any toxicity. If medium acidifies, carefully refresh up to 50% without disturbing cells.",
-    "6) Do not add additional drug between Monday and Friday unless protocol specifies pulse-dosing.",
-    "FRIDAY (each week) — Measurement on the SAME plate:",
-    "7) Choose readout (e.g., MTT, resazurin/AlamarBlue, CellTiter-Glo, imaging). Prepare all reagents according to kit/SOP.",
-    "8) Equilibrate plate and reagents to RT if required by the assay.",
-    "9) Perform assay per manufacturer/SOP (volumes, incubation times, light protection). Minimize well-to-well disturbance.",
-    "10) Read plate on appropriate instrument (absorbance/fluorescence/luminescence). Export raw data with plate map.",
-    "11) Optional: After reading, gently replace assay-compatible medium to keep cells viable for subsequent weeks.",
-    "Repeat for 4 consecutive weeks using the SAME plate:",
-    "12) MON: Redose with fresh cisplatin working solution at planned concentrations.",
-    "13) FRI: Repeat measurement on the same wells; ensure instrument settings are identical week-to-week.",
-    "Controls & QC:",
-    "14) Include vehicle controls, no-cell blanks, and positive control (known cytotoxic) if available.",
-    "15) Record plate map each week; maintain consistent well positions for longitudinal comparison.",
-    "Data handling:",
-    "16) Normalize Friday readouts to vehicle controls; trend each concentration across the 4 weeks. Note any medium changes or deviations.",
-    "Waste & decontamination:",
-    "17) Dispose of cisplatin waste per institutional hazardous/chemo waste policy; decontaminate work area and tools."
-         ]
-    },
-      "elisa": {
+    "elisa": {
         "title": "ELISA – Sandwich Format",
         "steps": [
             "Coat capture antibody; incubate.",
@@ -135,9 +103,9 @@ except FileNotFoundError:
 except Exception as e:
     st.warning(f"Could not read protocols.json ({e}); using built-in defaults.")
 
-# -----------------------------
+# -----------------------------------
 # Core models & helpers
-# -----------------------------
+# -----------------------------------
 @dataclass
 class Task:
     name: str
@@ -233,10 +201,9 @@ def parse_paragraph_to_template(text: str) -> List[Task]:
     tasks.append(Task("Cleanup & notes", 20, dt.time(16,0), dt.time(17,0), deps_cleanup))
     return tasks if tasks else make_template("cell_timecourse")
 
-# -----------------------------
-# OpenAI structured parsing schema + functions
-# -----------------------------
-# OpenAI tool spec (Responses API expects name at top level)
+# -----------------------------------
+# OpenAI structured parsing tool spec + helpers
+# -----------------------------------
 TOOL_SPEC = {
     "type": "function",
     "name": "extract_experiment",
@@ -257,31 +224,44 @@ TOOL_SPEC = {
     }
 }
 
+def _with_retry(fn, attempts=3, base=0.8, cap=6.0):
+    last_err = None
+    for i in range(attempts):
+        try:
+            return fn()
+        except Exception as e:
+            last_err = e
+            time.sleep(min(cap, base * (2 ** i)) + random.random() * 0.25)
+    raise last_err
+
 def llm_parse_paragraph_to_spec(text: str) -> Optional[dict]:
     if client is None:
         return None
 
-    prompt = f"""
-    You are a lab planner. Parse the following paragraph and return ONLY structured fields via the provided tool.
-    If assay is unclear, choose the best fit from: cell_timecourse, western_blot, qpcr, elisa.
-    Paragraph: ```{text}```
-    """
+    prompt = (
+        "You are a lab planner. Parse the paragraph and return ONLY the structured fields "
+        "via the provided tool. If assay is unclear, pick: cell_timecourse, western_blot, qpcr, elisa.\n\n"
+        f"Paragraph: ```{text}```"
+    )
 
-    try:
-        resp = client.responses.create(
-            model="gpt-4o-mini",  # safer for structured extraction
+    def _call():
+        return client.responses.create(
+            model="gpt-4o-mini",
             input=[
                 {"role": "system", "content": "Extract entities for lab scheduling."},
                 {"role": "user", "content": prompt},
             ],
             tools=[TOOL_SPEC],
             tool_choice={"type": "function", "name": "extract_experiment"},
-            max_output_tokens=400,
+            max_output_tokens=300,
+            timeout=20_000,
         )
 
-        # Pull function call arguments
+    try:
+        resp = _with_retry(_call, attempts=3)
         for item in resp.output:
-            if getattr(item, "type", "") == "tool_call" and getattr(item, "name", "") == "extract_experiment":
+            t = getattr(item, "type", "")
+            if t == "tool_call" and (getattr(item, "name", "") == "extract_experiment" or getattr(item, "tool_name", "") == "extract_experiment"):
                 args = getattr(item, "arguments", {})
                 if isinstance(args, str):
                     import json as _json
@@ -289,16 +269,30 @@ def llm_parse_paragraph_to_spec(text: str) -> Optional[dict]:
                         args = _json.loads(args)
                     except Exception:
                         pass
-                if isinstance(args, dict):
-                    return args
+                return args if isinstance(args, dict) else None
         return None
-
-    except Exception as e:
-        st.info(f"LLM parser unavailable ({e}); using fallback.")
-        return None
-
-
-
+    except Exception:
+        # JSON-only fallback if tool routing fails
+        try:
+            jprompt = (
+                "Return ONLY valid minified JSON with keys: "
+                "{assay, cell_line, doses, replicates, timepoints_hours, needs_seeding, include_gel_check, other_notes}. "
+                "If unknown, use null or []. No commentary.\n\n"
+                f"Paragraph: ```{text}```"
+            )
+            def _call_json():
+                return client.responses.create(
+                    model="gpt-4o-mini",
+                    input=[{"role": "user", "content": jprompt}],
+                    max_output_tokens=300,
+                    timeout=20_000,
+                )
+            resp2 = _with_retry(_call_json, attempts=2)
+            raw = "".join(getattr(o, "text", "") for o in resp2.output if getattr(o, "type", "") == "output_text")
+            import json as _json
+            return _json.loads(raw)
+        except Exception:
+            return None
 
 def tasks_from_llm_spec(spec: dict) -> List[Task]:
     assay = (spec.get("assay") or "cell_timecourse").lower()
@@ -306,7 +300,6 @@ def tasks_from_llm_spec(spec: dict) -> List[Task]:
         tasks = make_template("cell_timecourse")
         tps = spec.get("timepoints_hours") or []
         wanted = sorted(set(int(x) for x in tps if isinstance(x, (int, float))))
-        # Remove default TP tasks, then add wanted
         tasks = [t for t in tasks if "TP:" not in t.name]
         after = "Treat cells (T0)"
         for h in wanted:
@@ -323,9 +316,9 @@ def tasks_from_llm_spec(spec: dict) -> List[Task]:
         tasks = make_template("cell_timecourse")
     return tasks
 
-# -----------------------------
+# -----------------------------------
 # Scheduler, ICS, reagents, notebook
-# -----------------------------
+# -----------------------------------
 def schedule_multiday(tasks: List[Task], start_date: dt.date, num_days: int,
                       work_start=dt.time(9,0), work_end=dt.time(17,0)) -> pd.DataFrame:
     from collections import defaultdict, deque
@@ -347,7 +340,6 @@ def schedule_multiday(tasks: List[Task], start_date: dt.date, num_days: int,
             indegree[nxt] -= 1
             if indegree[nxt] == 0:
                 q.append(nxt)
-    # Append any nodes missed (unmet deps) to avoid deadlock
     for n in name_to_task:
         if n not in order:
             order.append(n)
@@ -389,7 +381,6 @@ def schedule_multiday(tasks: List[Task], start_date: dt.date, num_days: int,
             end_dt = start_dt + dt.timedelta(minutes=t.duration_min)
             if end_dt > clamp(day, t.latest_end):
                 continue
-            # overlap check
             conflict = False
             for s in scheduled:
                 if s.day_index == day_idx and not (end_dt <= s.start_dt or start_dt >= s.end_dt):
@@ -400,7 +391,6 @@ def schedule_multiday(tasks: List[Task], start_date: dt.date, num_days: int,
                 placed = True
                 break
         if not placed:
-            # best-effort drop on last day if possible
             last_day = start_date + dt.timedelta(days=num_days-1)
             dstart = clamp(last_day, work_start)
             dend = clamp(last_day, work_end)
@@ -435,7 +425,6 @@ def build_ics(df: pd.DataFrame) -> str:
     return "\n".join(lines)
 
 def reagent_calculator(components: List[dict]) -> List[dict]:
-    # components: [{"name":"Drug A","stock":"10 mM","final":"1 uM","final_volume_ml":10}, ...]
     def to_M(val, unit):
         unit = unit.lower().strip()
         factor = {"m":1, "mm":1e-3, "um":1e-6, "nm":1e-9}.get(unit)
@@ -483,9 +472,69 @@ def notebook_summary(df: pd.DataFrame, experiment_name: str, protocol_key: str,
     lines.append(f"_Generated on {dt.datetime.now().strftime('%Y-%m-%d %H:%M')}_")
     return "\n".join(lines)
 
-# -----------------------------
+# -----------------------------------
+# Special template: OAW42 Mon treat / Fri measure ×4 weeks (direct plan)
+# -----------------------------------
+def _next_weekday(d: dt.date, weekday: int) -> dt.date:
+    """weekday: Monday=0 ... Sunday=6"""
+    days_ahead = (weekday - d.weekday() + 7) % 7
+    return d + dt.timedelta(days=days_ahead or 7)
+
+def build_oaw42_mf_4w_plan(
+    start_from: Optional[dt.date] = None,
+    treat_time: dt.time = dt.time(10, 0),
+    measure_time: dt.time = dt.time(15, 0),
+    weeks: int = 4,
+) -> pd.DataFrame:
+    """
+    Create fixed events:
+      - Monday: Treat OAW42 with cisplatin (same plate)
+      - Friday: Measure on the same plate
+    Repeats for `weeks` weeks.
+    """
+    if start_from is None:
+        start_from = dt.date.today()
+
+    first_monday = _next_weekday(start_from, 0)   # Monday
+    rows = []
+    for w in range(weeks):
+        mon = first_monday + dt.timedelta(days=7*w)
+        fri = mon + dt.timedelta(days=4)
+
+        # Treat (Mon)
+        start_dt = dt.datetime.combine(mon, treat_time)
+        end_dt   = start_dt + dt.timedelta(minutes=20)
+        rows.append({
+            "Task": f"Treat OAW42 with cisplatin (Week {w+1})",
+            "Start": start_dt,
+            "End": end_dt,
+            "Duration_min": 20,
+            "Day": mon.isoformat()
+        })
+
+        # Measure (Fri)
+        start_dt = dt.datetime.combine(fri, measure_time)
+        end_dt   = start_dt + dt.timedelta(minutes=45)
+        rows.append({
+            "Task": f"Measure plate (same plate) (Week {w+1})",
+            "Start": start_dt,
+            "End": end_dt,
+            "Duration_min": 45,
+            "Day": fri.isoformat()
+        })
+
+    df = pd.DataFrame(rows).sort_values(["Day", "Start"])
+    return df
+
+# -----------------------------------
 # UI: Planner + Tools
-# -----------------------------
+# -----------------------------------
+with st.expander("🔧 OpenAI status", expanded=False):
+    if client:
+        st.success("OpenAI client initialized.")
+    else:
+        st.warning("OpenAI client not initialized. Add OPENAI_API_KEY in Secrets or env to enable AI parsing & suggestions.")
+
 col1, col2 = st.columns([2, 1])
 
 with col1:
@@ -493,15 +542,43 @@ with col1:
     horizon = st.selectbox("Planning horizon", ["Weekly (next Mon–Fri)", "Monthly (~4 work weeks)"])
     mode = st.radio("Describe by…", ["Template type", "Paragraph description"])
 
+    use_direct_df = False
+    df_direct = None
+
     if mode == "Template type":
-        exptype = st.selectbox("Experiment type", ["cell_timecourse", "western_blot", "qpcr", "elisa"])
-        tasks = make_template(exptype)
-        proto_key = exptype
+        exptype = st.selectbox(
+            "Experiment type",
+            [
+                "cell_timecourse",
+                "western_blot",
+                "qpcr",
+                "elisa",
+                "oaw42_cisplatin_weekly (Mon treat / Fri measure ×4)"
+            ]
+        )
+
+        if exptype.startswith("oaw42_cisplatin_weekly"):
+            # Build the 4-week Mon/Fri plan directly (bypass generic scheduler)
+            weeks = st.number_input("Number of weeks", min_value=1, max_value=12, value=4, step=1)
+            treat_time = st.time_input("Monday treat time", value=dt.time(10, 0))
+            measure_time = st.time_input("Friday measurement time", value=dt.time(15, 0))
+            df_direct = build_oaw42_mf_4w_plan(
+                start_from=dt.date.today(),
+                treat_time=treat_time,
+                measure_time=measure_time,
+                weeks=int(weeks),
+            )
+            use_direct_df = True
+            proto_key = "oaw42_cisplatin_weekly"   # should match your protocols.json key
+        else:
+            tasks = make_template(exptype)
+            proto_key = exptype
+
     else:
         paragraph = st.text_area(
             "Describe your experiment",
             height=120,
-            value="3 doses of cisplatin on SKOV3; 1h & 4h timepoints; quick mini-gel; seed cells."
+            value="Treat OAW42 cells with cisplatin every Monday; measure same plate every Friday for 4 weeks."
         )
         spec = llm_parse_paragraph_to_spec(paragraph)
         if spec:
@@ -509,20 +586,38 @@ with col1:
             proto_key = (spec.get("assay") or "cell_timecourse").lower()
             st.caption("🧠 Parsed with OpenAI (structured).")
         else:
-            tasks = parse_paragraph_to_template(paragraph)
-            proto_key = "cell_timecourse"
-            st.caption("ℹ️ Using fallback regex parser (no/failed API).")
+            # Special hard-coded fallback for OAW42 Mon/Fri pattern
+            text_l = paragraph.lower().strip()
+            mf_trigger = (
+                "oaw42" in text_l and
+                "monday" in text_l and
+                "friday" in text_l and
+                ("4 week" in text_l or "four week" in text_l) and
+                "cisplatin" in text_l
+            )
+            if mf_trigger:
+                df_direct = build_oaw42_mf_4w_plan()
+                use_direct_df = True
+                proto_key = "oaw42_cisplatin_weekly"
+                st.caption("🔧 Using special fallback plan for OAW42 Mon/Fri ×4.")
+            else:
+                tasks = parse_paragraph_to_template(paragraph)
+                proto_key = "cell_timecourse"
+                st.caption("ℹ️ Using fallback regex parser (no/failed API).")
 
-    # schedule window
+    # schedule window (only used by generic scheduler)
     today = dt.date.today()
     days_ahead = (0 - today.weekday() + 7) % 7
     if days_ahead == 0:
-        # if Monday, start next Monday to avoid conflicting with current day
         days_ahead = 7
     start_date = today + dt.timedelta(days=days_ahead)
     num_days = 5 if "Weekly" in horizon else 20
 
-    df = schedule_multiday(tasks, start_date, num_days)
+    if use_direct_df and df_direct is not None:
+        df = df_direct
+    else:
+        df = schedule_multiday(tasks, start_date, num_days)
+
     st.dataframe(df, use_container_width=True)
 
     # downloads
@@ -530,7 +625,7 @@ with col1:
     st.download_button("📅 Download .ICS (all reminders)", data=ics_text, file_name="lab_plan.ics", mime="text/calendar")
     st.download_button("📄 Download CSV plan", data=df.to_csv(index=False), file_name="lab_plan.csv", mime="text/csv")
 
-    # ---------- Optimization suggestions (place right after table + buttons)
+    # Optimization suggestions (optional)
     with st.expander("🧠 Optimization suggestions", expanded=False):
         if client and not df.empty:
             try:
@@ -554,7 +649,7 @@ with col1:
                 Protocol steps:
                 {proto}
                 """
-                resp = client.responses.create(model="gpt-5", input=[{"role":"user","content":prompt}], max_output_tokens=400)
+                resp = client.responses.create(model="gpt-4o-mini", input=[{"role":"user","content":prompt}], max_output_tokens=400, timeout=20_000)
                 text_out = []
                 for item in resp.output:
                     if getattr(item, "type", "") == "output_text":
@@ -587,7 +682,7 @@ with col2:
             st.error(str(e))
 
 st.subheader("Notebook Summary")
-exp_name = st.text_input("Experiment name/title", value="Dose-response + WB quick check")
+exp_name = st.text_input("Experiment name/title", value="OAW42 cisplatin Mon/Fri ×4 (same plate)")
 if st.button("Generate notebook text"):
     try:
         reagents = reagent_calculator(comps)
@@ -598,4 +693,4 @@ if st.button("Generate notebook text"):
     st.download_button("⬇️ Download notebook.txt", data=text, file_name="notebook_summary.txt", mime="text/plain")
 
 st.divider()
-st.caption("Local protocol library is loaded from 'protocols.json'. Extend that file to add your own SOPs.")
+st.caption("Local protocol library is loaded from 'protocols.json'. Extend that file to add your own SOPs (e.g., 'oaw42_cisplatin_weekly').")
