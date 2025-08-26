@@ -34,6 +34,40 @@
       "Perform ΔΔCt analysis; visualize results."
     ]
   },
+  "oaw42_cisplatin_weekly": {
+  "title": "OAW42 — Weekly Cisplatin Treatment (Mon) with Friday Measurement on Same Plate (×4 weeks)",
+  "steps": [
+    "Safety: Handle cisplatin with appropriate PPE and waste disposal; use certified chemotherapy hood where available.",
+    "Plate setup (Week 0, Fri or Mon AM before first dose): Seed OAW42 cells into a 96-well plate at a density that remains sub-confluent for ≥4 weeks with weekly treatments (e.g., 3–6k cells/well; optimize locally). Include control wells.",
+    "Media: Use complete growth medium; warm to 37 °C before use.",
+    "Drug stock: Prepare cisplatin stock per MSDS/SOP. Prepare working dilutions fresh on dosing days; protect from light as applicable.",
+    "Weekly cycle overview: Treat every Monday; measure every Friday on the same plate; maintain cells Tue–Thu with no measurement manipulation.",
+    "MONDAY (each week) — Dosing:",
+    "1) Pre-dose: Aspirate ~50% of medium if needed to maintain volume after adding drug; avoid exposing cells to air.",
+    "2) Prepare fresh cisplatin working solutions to desired final concentrations (e.g., 0.1–10 µM). Use sterile technique.",
+    "3) Dose: Add drug to achieve final concentration; gently tap/rock plate for even distribution. Mark plate and record exact T0.",
+    "4) Return plate to incubator (37 °C, 5% CO₂).",
+    "TUE–THU — Maintenance:",
+    "5) Visual check daily for morphology and confluence; document any toxicity. If medium acidifies, carefully refresh up to 50% without disturbing cells.",
+    "6) Do not add additional drug between Monday and Friday unless protocol specifies pulse-dosing.",
+    "FRIDAY (each week) — Measurement on the SAME plate:",
+    "7) Choose readout (e.g., MTT, resazurin/AlamarBlue, CellTiter-Glo, imaging). Prepare all reagents according to kit/SOP.",
+    "8) Equilibrate plate and reagents to RT if required by the assay.",
+    "9) Perform assay per manufacturer/SOP (volumes, incubation times, light protection). Minimize well-to-well disturbance.",
+    "10) Read plate on appropriate instrument (absorbance/fluorescence/luminescence). Export raw data with plate map.",
+    "11) Optional: After reading, gently replace assay-compatible medium to keep cells viable for subsequent weeks.",
+    "Repeat for 4 consecutive weeks using the SAME plate:",
+    "12) MON: Redose with fresh cisplatin working solution at planned concentrations.",
+    "13) FRI: Repeat measurement on the same wells; ensure instrument settings are identical week-to-week.",
+    "Controls & QC:",
+    "14) Include vehicle controls, no-cell blanks, and positive control (known cytotoxic) if available.",
+    "15) Record plate map each week; maintain consistent well positions for longitudinal comparison.",
+    "Data handling:",
+    "16) Normalize Friday readouts to vehicle controls; trend each concentration across the 4 weeks. Note any medium changes or deviations.",
+    "Waste & decontamination:",
+    "17) Dispose of cisplatin waste per institutional hazardous/chemo waste policy; decontaminate work area and tools."
+  ]
+}
   "elisa": {
     "title": "ELISA – Sandwich Format",
     "steps": [
