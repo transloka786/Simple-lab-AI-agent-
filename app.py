@@ -233,40 +233,34 @@ def llm_parse_paragraph_to_spec(text: str) -> Optional[dict]:
 
     try:
         resp = client.responses.create(
-            # Pick a model you have access to; these are reliable for structured outputs:
-            # "gpt-4o-mini", "o3-mini", etc. If you were using "gpt-5" and don't have access,
-            # the call will 404. Swap to one you know works in your account.
-            model="gpt-4o-mini",
+            model="gpt-4o-mini",  # safer for structured extraction
             input=[
                 {"role": "system", "content": "Extract entities for lab scheduling."},
                 {"role": "user", "content": prompt},
             ],
             tools=[TOOL_SPEC],
-            tool_choice={"type": "function", "function": {"name": "extract_experiment"}},
+            tool_choice={"type": "function", "name": "extract_experiment"},
             max_output_tokens=400,
         )
 
-        # Pull function call arguments (SDKs may expose slightly different fields; cover both)
+        # Pull function call arguments
         for item in resp.output:
-            t = getattr(item, "type", "")
-            if t == "tool_call":
-                # Some SDKs use 'name', others 'tool_name'
-                tool_name = getattr(item, "name", None) or getattr(item, "tool_name", None)
-                if tool_name == "extract_experiment":
-                    args = getattr(item, "arguments", {})  # may already be a dict
-                    if isinstance(args, str):
-                        import json as _json
-                        try:
-                            args = _json.loads(args)
-                        except Exception:
-                            pass
-                    if isinstance(args, dict):
-                        return args
+            if getattr(item, "type", "") == "tool_call" and getattr(item, "name", "") == "extract_experiment":
+                args = getattr(item, "arguments", {})
+                if isinstance(args, str):
+                    import json as _json
+                    try:
+                        args = _json.loads(args)
+                    except Exception:
+                        pass
+                if isinstance(args, dict):
+                    return args
         return None
 
     except Exception as e:
         st.info(f"LLM parser unavailable ({e}); using fallback.")
         return None
+
 
 
 
