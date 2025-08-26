@@ -200,7 +200,9 @@ def parse_paragraph_to_template(text: str) -> List[Task]:
 # -----------------------------
 # OpenAI structured parsing schema + functions
 # -----------------------------
-EXPERIMENT_SCHEMA = {
+# OpenAI tool spec (Responses API expects name at top level)
+TOOL_SPEC = {
+    "type": "function",
     "name": "extract_experiment",
     "description": "Extract experiment entities from a paragraph for lab planning.",
     "parameters": {
@@ -229,19 +231,23 @@ def llm_parse_paragraph_to_spec(text: str) -> Optional[dict]:
     """
     try:
         resp = client.responses.create(
-            model="gpt-5",
-            input=[{"role":"system","content":"Extract entities for lab scheduling."},
-                   {"role":"user","content":prompt}],
-            tools=[{"type":"function","function": EXPERIMENT_SCHEMA}],
-            tool_choice={"type":"function","function":{"name":"extract_experiment"}},
-            max_output_tokens=400
+            model="gpt-5",  # or a cheaper structured model
+            input=[
+                {"role": "system", "content": "Extract entities for lab scheduling."},
+                {"role": "user", "content": prompt},
+            ],
+            tools=[TOOL_SPEC],
+            tool_choice={"type": "tool", "name": "extract_experiment"},
+            max_output_tokens=400,
         )
-        for out in resp.output:
-            if getattr(out, "type", "") == "tool_call" and getattr(out, "tool_name", "") == "extract_experiment":
-                return out.arguments  # already structured
+        # Pull tool output (function arguments) safely
+        for item in resp.output:
+            if getattr(item, "type", "") == "tool_call" and getattr(item, "tool_name", "") == "extract_experiment":
+                return item.arguments  # already structured as a dict
     except Exception as e:
         st.info(f"LLM parser unavailable ({e}); using fallback.")
     return None
+
 
 def tasks_from_llm_spec(spec: dict) -> List[Task]:
     assay = (spec.get("assay") or "cell_timecourse").lower()
